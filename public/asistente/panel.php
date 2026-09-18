@@ -255,6 +255,18 @@ $resumen = [
 
         <!-- Módulos de Acceso Rápido -->
         <div class="row align-items-stretch text-center g-4" id="moduleList">
+            <div class="col-md-4 module-item" data-search="estudiantes alumnos dni datos personales apoderado tutor">
+                <div class="card module-card shadow-sm border-0 h-100">
+                    <div class="card-body d-flex flex-column justify-content-between p-4">
+                        <div>
+                            <h4 class="card-title text-info fw-bold">Estudiantes</h4>
+                            <p class="card-text text-muted">Registra datos personales y asigna el apoderado principal de cada estudiante.</p>
+                        </div>
+                        <a href="estudiantes.php" class="btn btn-info text-dark mt-3">Gestionar Estudiantes</a>
+                    </div>
+                </div>
+            </div>
+
             <div class="col-md-4 module-item" data-search="padres apoderados responsables datos personales direccion apafa">
                 <div class="card module-card shadow-sm border-0 h-100">
                     <div class="card-body d-flex flex-column justify-content-between p-4">

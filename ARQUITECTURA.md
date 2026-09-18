@@ -17,6 +17,7 @@ Sistema_escolar/
 ├── public/               # Archivos visibles para el navegador
 │   ├── login.php         # Entrada pública y autenticación
 │   ├── asistente/        # Páginas protegidas del asistente
+│   │   ├── estudiantes.php # Registro y consulta de estudiantes
 │   │   ├── matriculas.php # Registro y consulta de matrículas
 │   │   └── pagos.php      # Registro y consulta de pagos
 │   └── assets/images/    # Imágenes públicas
