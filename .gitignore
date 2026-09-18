@@ -1,0 +1,14 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config/database.local.php
+
+# Runtime and editor files
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+
+# PHP dependencies and generated files
+vendor/
