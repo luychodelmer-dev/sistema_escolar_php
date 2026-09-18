@@ -12,4 +12,21 @@ CREATE TABLE IF NOT EXISTS permisos_usuario (
 )
 SQL);
 
+$pdo->exec(<<<'SQL'
+INSERT INTO permisos_usuario (usuario_id, permiso, otorgado, actualizado_en)
+SELECT id, 'p_editar', permiso_editar, CURRENT_TIMESTAMP
+FROM usuarios
+ON CONFLICT (usuario_id, permiso) DO NOTHING;
+
+INSERT INTO permisos_usuario (usuario_id, permiso, otorgado, actualizado_en)
+SELECT id, 'p_matricular', permiso_matricular, CURRENT_TIMESTAMP
+FROM usuarios
+ON CONFLICT (usuario_id, permiso) DO NOTHING;
+
+INSERT INTO permisos_usuario (usuario_id, permiso, otorgado, actualizado_en)
+SELECT id, 'p_cobrar', permiso_cobrar, CURRENT_TIMESTAMP
+FROM usuarios
+ON CONFLICT (usuario_id, permiso) DO NOTHING;
+SQL);
+
 echo "Tabla permisos_usuario lista." . PHP_EOL;
