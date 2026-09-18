@@ -17,18 +17,28 @@ $mensaje_error = '';
 
 // 2. Procesar el formulario cuando se envía por POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $dni = trim($_POST['dni']);
-    $nombres = trim($_POST['nombres']);
-    $apellido_paterno = trim($_POST['apellido_paterno']);
-    $apellido_materno = trim($_POST['apellido_materno']);
-    $nombre_padre_adicional = trim($_POST['nombre_padre_adicional']);
-    $direccion = trim($_POST['direccion']);
-    $celular_actual = trim($_POST['celular_actual']);
-    $celular_padre = trim($_POST['celular_padre']);
-    $celular_madre = trim($_POST['celular_madre']);
-    $nro_tarjeta_apafa = trim($_POST['nro_tarjeta_apafa']) ?: null; // Si está vacío, se guarda como NULL
+    $dni = trim($_POST['dni'] ?? '');
+    $nombres = trim($_POST['nombres'] ?? '');
+    $apellido_paterno = trim($_POST['apellido_paterno'] ?? '');
+    $apellido_materno = trim($_POST['apellido_materno'] ?? '');
+    $nombre_padre_adicional = trim($_POST['nombre_padre_adicional'] ?? '');
+    $direccion = trim($_POST['direccion'] ?? '');
+    $celular_actual = trim($_POST['celular_actual'] ?? '');
+    $celular_padre = trim($_POST['celular_padre'] ?? '');
+    $celular_madre = trim($_POST['celular_madre'] ?? '');
+    $nro_tarjeta_apafa = trim($_POST['nro_tarjeta_apafa'] ?? '') ?: null;
 
-    if (!empty($dni) && !empty($nombres) && !empty($apellido_paterno)) {
+    $celularesValidos = static function (string $celular): bool {
+        return $celular === '' || preg_match('/^9\d{8}$/', $celular) === 1;
+    };
+
+    if ($dni === '' || $nombres === '' || $apellido_paterno === '' || $apellido_materno === '' || $direccion === '' || $celular_actual === '') {
+        $mensaje_error = 'Completa todos los campos obligatorios, incluido el celular principal.';
+    } elseif (!preg_match('/^\d{8}$/', $dni)) {
+        $mensaje_error = 'El DNI debe tener exactamente 8 números.';
+    } elseif (!$celularesValidos($celular_actual) || !$celularesValidos($celular_padre) || !$celularesValidos($celular_madre)) {
+        $mensaje_error = 'Los celulares deben tener 9 dígitos y comenzar con 9.';
+    } else {
         try {
             $sql = "INSERT INTO apoderados (
                         dni, nombres, apellido_paterno, apellido_materno, 
@@ -63,8 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mensaje_error = "Error en la base de datos: " . $e->getMessage();
             }
         }
-    } else {
-        $mensaje_error = "Por favor, completa los campos obligatorios (DNI, Nombres y Apellido Paterno).";
     }
 }
 ?>
@@ -112,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label fw-bold">DNI *</label>
-                            <input type="text" name="dni" class="form-control" maxlength="8" required placeholder="Ej: 71234567">
+                            <input type="text" name="dni" class="form-control" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required placeholder="Ej: 71234567">
                         </div>
                         <div class="col-md-8">
                             <label class="form-label fw-bold">Nombres Completos *</label>
@@ -123,8 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <input type="text" name="apellido_paterno" class="form-control" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Apellido Materno</label>
-                            <input type="text" name="apellido_materno" class="form-control">
+                            <label class="form-label fw-bold">Apellido Materno *</label>
+                            <input type="text" name="apellido_materno" class="form-control" required>
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">Nombre Padre Adicional <small class="text-muted">(Referencia complementaria)</small></label>
@@ -135,20 +143,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <h5 class="text-secondary border-bottom pb-2 mt-4 mb-3">Datos de Contacto y APAFA</h5>
                     <div class="row g-3">
                         <div class="col-md-12">
-                            <label class="form-label fw-bold">Dirección de Domicilio</label>
-                            <input type="text" name="direccion" class="form-control" placeholder="Ej: Av. Los Rosales 123">
+                            <label class="form-label fw-bold">Dirección de Domicilio *</label>
+                            <input type="text" name="direccion" class="form-control" required placeholder="Ej: Av. Los Rosales 123">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold text-primary">Celular Actual (Principal)</label>
-                            <input type="text" name="celular_actual" class="form-control" maxlength="15">
+                            <label class="form-label fw-bold text-primary">Celular Actual (Principal) *</label>
+                            <input type="text" name="celular_actual" class="form-control" inputmode="numeric" pattern="9[0-9]{8}" minlength="9" maxlength="9" required placeholder="9XXXXXXXX">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Celular Padre</label>
-                            <input type="text" name="celular_padre" class="form-control" maxlength="15">
+                            <input type="text" name="celular_padre" class="form-control" inputmode="numeric" pattern="9[0-9]{8}" maxlength="9" placeholder="9XXXXXXXX">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Celular Madre</label>
-                            <input type="text" name="celular_madre" class="form-control" maxlength="15">
+                            <input type="text" name="celular_madre" class="form-control" inputmode="numeric" pattern="9[0-9]{8}" maxlength="9" placeholder="9XXXXXXXX">
                         </div>
                         <div class="col-md-6 mt-4">
                             <label class="form-label fw-bold text-success">N° Tarjeta APAFA</label>

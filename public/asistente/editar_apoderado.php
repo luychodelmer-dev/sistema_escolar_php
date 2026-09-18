@@ -33,7 +33,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'id' => $id,
     ];
 
-    try {
+    $celularValido = static function (string $celular): bool {
+        return $celular === '' || preg_match('/^9\d{8}$/', $celular) === 1;
+    };
+
+    if ($datos['direccion'] === '' || $datos['celular_actual'] === '') {
+        $error = 'La dirección y el celular actual son obligatorios.';
+    } elseif (!$celularValido($datos['celular_actual']) || !$celularValido($datos['celular_padre']) || !$celularValido($datos['celular_madre'])) {
+        $error = 'Los celulares deben tener 9 dígitos y comenzar con 9.';
+    } else {
+        try {
         $stmt = $pdo->prepare(
             'UPDATE apoderados
              SET direccion = :direccion, celular_actual = :celular_actual,
@@ -44,8 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         registrar_auditoria('editar_apoderado', 'Actualizó dirección y teléfonos del apoderado ID ' . $id . '.');
         header('Location: padres.php?actualizado=1');
         exit;
-    } catch (PDOException $exception) {
-        $error = 'No se pudo actualizar el apoderado.';
+        } catch (PDOException $exception) {
+            $error = 'No se pudo actualizar el apoderado.';
+        }
     }
 }
 ?>
@@ -66,10 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php if ($error !== ''): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
             <form method="POST" class="row g-3">
                 <input type="hidden" name="id" value="<?= (int) $id ?>">
-                <div class="col-12"><label class="form-label" for="direccion">Dirección</label><input class="form-control" id="direccion" name="direccion" value="<?= htmlspecialchars($apoderado['direccion'] ?? '') ?>"></div>
-                <div class="col-md-4"><label class="form-label" for="celular_actual">Celular actual</label><input class="form-control" id="celular_actual" name="celular_actual" value="<?= htmlspecialchars($apoderado['celular_actual'] ?? '') ?>"></div>
-                <div class="col-md-4"><label class="form-label" for="celular_padre">Celular padre</label><input class="form-control" id="celular_padre" name="celular_padre" value="<?= htmlspecialchars($apoderado['celular_padre'] ?? '') ?>"></div>
-                <div class="col-md-4"><label class="form-label" for="celular_madre">Celular madre</label><input class="form-control" id="celular_madre" name="celular_madre" value="<?= htmlspecialchars($apoderado['celular_madre'] ?? '') ?>"></div>
+                <div class="col-12"><label class="form-label" for="direccion">Dirección *</label><input class="form-control" id="direccion" name="direccion" value="<?= htmlspecialchars($apoderado['direccion'] ?? '') ?>" required></div>
+                <div class="col-md-4"><label class="form-label" for="celular_actual">Celular actual *</label><input class="form-control" id="celular_actual" name="celular_actual" inputmode="numeric" pattern="9[0-9]{8}" minlength="9" maxlength="9" value="<?= htmlspecialchars($apoderado['celular_actual'] ?? '') ?>" required></div>
+                <div class="col-md-4"><label class="form-label" for="celular_padre">Celular padre</label><input class="form-control" id="celular_padre" name="celular_padre" inputmode="numeric" pattern="9[0-9]{8}" maxlength="9" value="<?= htmlspecialchars($apoderado['celular_padre'] ?? '') ?>"></div>
+                <div class="col-md-4"><label class="form-label" for="celular_madre">Celular madre</label><input class="form-control" id="celular_madre" name="celular_madre" inputmode="numeric" pattern="9[0-9]{8}" maxlength="9" value="<?= htmlspecialchars($apoderado['celular_madre'] ?? '') ?>"></div>
                 <div class="col-12 d-flex justify-content-end gap-2"><a href="padres.php" class="btn btn-secondary">Cancelar</a><button class="btn btn-primary" type="submit">Guardar cambios</button></div>
             </form>
         </div>
