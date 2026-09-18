@@ -21,9 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'grado' => filter_input(INPUT_POST, 'grado', FILTER_VALIDATE_INT),
         'seccion' => trim($_POST['seccion'] ?? ''),
         'anio' => (int) ($_POST['anio'] ?? date('Y')),
+        'apoderado_id' => filter_input(INPUT_POST, 'apoderado_id', FILTER_VALIDATE_INT),
     ];
 
-    if (in_array('', [$datos['nombres'], $datos['apellido_paterno'], $datos['apellido_materno'], $datos['dni'], $datos['seccion']], true) || !$datos['nivel_id'] || !$datos['grado']) {
+    if (in_array('', [$datos['nombres'], $datos['apellido_paterno'], $datos['apellido_materno'], $datos['dni'], $datos['seccion']], true) || !$datos['nivel_id'] || !$datos['grado'] || !$datos['apoderado_id']) {
         $error = 'Completa todos los campos obligatorios.';
     } elseif (!preg_match('/^\d{8}$/', $datos['dni'])) {
         $error = 'El DNI debe tener 8 números.';
@@ -32,6 +33,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo->beginTransaction();
+            $apoderadoStmt = $pdo->prepare(
+                "SELECT id FROM apoderados
+                 WHERE id = :id
+                                     AND COALESCE(NULLIF(celular_actual, ''), NULLIF(celular_padre, ''), NULLIF(celular_madre, ''), '') <> ''"
+            );
+            $apoderadoStmt->execute(['id' => $datos['apoderado_id']]);
+            if (!$apoderadoStmt->fetchColumn()) {
+                throw new RuntimeException('El apoderado debe tener al menos un número de celular registrado.');
+            }
+
             $estudianteStmt = $pdo->prepare('SELECT id FROM estudiantes WHERE dni = :dni ORDER BY id LIMIT 1');
             $estudianteStmt->execute(['dni' => $datos['dni']]);
             $estudianteId = $estudianteStmt->fetchColumn();
@@ -63,6 +74,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'seccion' => $datos['seccion'],
                 'digitador_id' => $_SESSION['user_id'],
             ]);
+
+            $relacionStmt = $pdo->prepare(
+                'INSERT INTO apoderado_estudiante
+                    (apoderado_id, estudiante_id, vinculo, es_principal, vive_con_estudiante, autorizado_recoger)
+                 VALUES (:apoderado_id, :estudiante_id, :vinculo, TRUE, FALSE, FALSE)
+                 ON CONFLICT (estudiante_id) DO UPDATE SET
+                    apoderado_id = EXCLUDED.apoderado_id,
+                    es_principal = TRUE'
+            );
+            $relacionStmt->execute([
+                'apoderado_id' => $datos['apoderado_id'],
+                'estudiante_id' => $estudianteId,
+                'vinculo' => 'Apoderado',
+            ]);
             $pdo->commit();
             registrar_auditoria('crear_matricula', 'Registró matrícula para DNI ' . $datos['dni'] . ' del año ' . $datos['anio'] . '.');
             header('Location: matriculas.php?guardado=1');
@@ -74,6 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = str_contains($exception->getMessage(), 'duplicate key')
                 ? 'Ese estudiante ya tiene una matrícula registrada para ese año.'
                 : 'No se pudo guardar la matrícula.';
+        } catch (RuntimeException $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error = $exception->getMessage();
         }
     }
 }
@@ -83,6 +113,13 @@ if (isset($_GET['guardado'])) {
 }
 
 $niveles = $pdo->query('SELECT id, nombre FROM niveles ORDER BY id')->fetchAll();
+$apoderados = $pdo->query(
+    "SELECT id, nombres, apellido_paterno, apellido_materno, dni,
+            celular_actual, celular_padre, celular_madre
+     FROM apoderados
+    WHERE COALESCE(NULLIF(celular_actual, ''), NULLIF(celular_padre, ''), NULLIF(celular_madre, ''), '') <> ''
+     ORDER BY apellido_paterno, nombres"
+)->fetchAll();
 $sql = 'SELECT m.id, m.anio, m.grado, m.seccion, m.estado_matricula,
                e.dni, e.nombres, e.apellido_paterno, e.apellido_materno,
                n.nombre AS nivel
@@ -114,6 +151,7 @@ $matriculas = $stmt->fetchAll();
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4"><div><h1 class="h3 mb-1">Alumnos y matrículas</h1><p class="text-muted mb-0">Registra matrículas por nivel, grado y sección.</p></div><a href="panel.php" class="btn btn-outline-primary">Volver al panel</a></div>
     <?php if ($mensaje !== ''): ?><div class="alert alert-success"><?= htmlspecialchars($mensaje) ?></div><?php endif; ?>
     <?php if ($error !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($puedeMatricular && !$apoderados): ?><div class="alert alert-warning">Primero registra un apoderado con al menos un número de celular para poder guardar una matrícula.</div><?php endif; ?>
     <?php if ($puedeMatricular): ?><section class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h5 mb-3">Nueva matrícula</h2><form method="POST" class="row g-3">
         <div class="col-md-4"><label class="form-label required" for="nombres">Nombres</label><input class="form-control" id="nombres" name="nombres" required></div>
         <div class="col-md-4"><label class="form-label required" for="apellido_paterno">Apellido paterno</label><input class="form-control" id="apellido_paterno" name="apellido_paterno" required></div>
@@ -123,7 +161,8 @@ $matriculas = $stmt->fetchAll();
         <div class="col-md-2"><label class="form-label required" for="grado">Grado</label><input class="form-control" id="grado" name="grado" type="number" min="1" max="6" required></div>
         <div class="col-md-2"><label class="form-label required" for="seccion">Sección</label><input class="form-control" id="seccion" name="seccion" maxlength="10" required></div>
         <div class="col-md-2"><label class="form-label required" for="anio">Año</label><input class="form-control" id="anio" name="anio" type="number" min="2020" max="2100" value="<?= date('Y') ?>" required></div>
-        <div class="col-12"><button class="btn btn-success" type="submit">Guardar matrícula</button></div>
+        <div class="col-md-8"><label class="form-label required" for="apoderado_id">Apoderado con celular</label><select class="form-select" id="apoderado_id" name="apoderado_id" required><option value="">Seleccionar</option><?php foreach ($apoderados as $apoderado): ?><option value="<?= (int) $apoderado['id'] ?>"><?= htmlspecialchars($apoderado['apellido_paterno'].' '.$apoderado['apellido_materno'].', '.$apoderado['nombres'].' - '.$apoderado['dni']) ?></option><?php endforeach; ?></select><small class="text-muted">Solo aparecen apoderados con al menos un número de celular.</small></div>
+        <div class="col-12"><button class="btn btn-success" type="submit" <?= !$apoderados ? 'disabled' : '' ?>>Guardar matrícula</button></div>
     </form></div></section><?php endif; ?>
     <section class="card shadow-sm"><div class="card-body p-4"><form method="GET" class="row g-2 mb-3"><div class="col-sm-9"><label class="visually-hidden" for="buscar">Buscar alumno</label><input class="form-control" id="buscar" name="buscar" value="<?= htmlspecialchars($busqueda) ?>" placeholder="Buscar por nombre o DNI"></div><div class="col-sm-3"><button class="btn btn-outline-primary w-100" type="submit">Buscar</button></div></form><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Alumno</th><th>DNI</th><th>Nivel</th><th>Grado</th><th>Sección</th><th>Año</th></tr></thead><tbody>
     <?php foreach ($matriculas as $matricula): ?><tr><td><?= htmlspecialchars($matricula['nombres'].' '.$matricula['apellido_paterno'].' '.$matricula['apellido_materno']) ?></td><td><?= htmlspecialchars($matricula['dni'] ?? '-') ?></td><td><?= htmlspecialchars(ucfirst($matricula['nivel'])) ?></td><td><?= htmlspecialchars($matricula['grado']) ?></td><td><?= htmlspecialchars($matricula['seccion']) ?></td><td><?= htmlspecialchars($matricula['anio']) ?></td></tr><?php endforeach; ?>
