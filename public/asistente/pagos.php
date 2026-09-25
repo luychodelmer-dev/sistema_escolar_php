@@ -9,6 +9,32 @@ $error = '';
 $mensaje = '';
 $busqueda = trim($_GET['buscar'] ?? '');
 $puedeCobrar = has_permission('p_cobrar');
+$materiasDisponibles = [
+    'Matemática',
+    'Comunicación',
+    'Ciencia y Ambiente',
+    'Historia',
+    'Geografía',
+    'Inglés',
+    'Educación Física',
+    'Arte',
+    'Tecnología',
+    'Religión',
+    'Personal Social',
+    'Desarrollo Personal',
+    'Computación',
+    'Biología',
+    'Química',
+    'Física',
+    'Literatura',
+    'Psicología',
+    'Administración',
+    'Contabilidad',
+    'Otra',
+];
+$pagosTieneCampoMaterias = (bool) $pdo->query(
+    "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'pagos' AND column_name = 'materias')"
+)->fetchColumn();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_permission('p_cobrar');
@@ -19,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'fecha_pago' => trim($_POST['fecha_pago'] ?? ''),
         'nro_recibo' => trim($_POST['nro_recibo'] ?? ''),
         'talonario' => trim($_POST['talonario'] ?? ''),
+        'materias' => trim($_POST['materias'] ?? ''),
     ];
 
     if (!$datos['matricula_id'] || !$datos['concepto_id'] || $datos['monto_pagado'] === '' || $datos['fecha_pago'] === '') {
@@ -53,18 +80,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('La deuda seleccionada no existe.');
             }
 
-            $pagoStmt = $pdo->prepare(
-                'INSERT INTO pagos (deuda_id, monto_pagado, nro_recibo, talonario, fecha_pago, registrado_por)
-                 VALUES (:deuda_id, :monto_pagado, :nro_recibo, :talonario, :fecha_pago, :registrado_por)'
-            );
-            $pagoStmt->execute([
+            $camposPago = ['deuda_id', 'monto_pagado', 'nro_recibo', 'talonario', 'fecha_pago', 'registrado_por'];
+            $valoresPago = [
                 'deuda_id' => $deuda['id'],
                 'monto_pagado' => $datos['monto_pagado'],
                 'nro_recibo' => $datos['nro_recibo'] ?: null,
                 'talonario' => $datos['talonario'] ?: null,
                 'fecha_pago' => $datos['fecha_pago'],
                 'registrado_por' => $_SESSION['user_id'],
-            ]);
+            ];
+            if ($pagosTieneCampoMaterias) {
+                $camposPago[] = 'materias';
+                $valoresPago['materias'] = $datos['materias'] !== '' ? $datos['materias'] : null;
+            }
+
+            $sqlInsertPago = 'INSERT INTO pagos (' . implode(', ', $camposPago) . ') VALUES (:' . implode(', :', $camposPago) . ')';
+            $pagoStmt = $pdo->prepare($sqlInsertPago);
+            $pagoStmt->execute($valoresPago);
 
             $totalStmt = $pdo->prepare('SELECT COALESCE(SUM(monto_pagado), 0) FROM pagos WHERE deuda_id = :deuda_id');
             $totalStmt->execute(['deuda_id' => $deuda['id']]);
@@ -102,7 +134,7 @@ $matriculasDisponibles = $pdo->query(
 )->fetchAll();
 $sql = 'SELECT p.id, p.monto_pagado, p.nro_recibo, p.talonario, p.fecha_pago,
                c.descripcion AS concepto, e.nombres, e.apellido_paterno,
-               e.apellido_materno, m.anio
+               e.apellido_materno, m.anio' . ($pagosTieneCampoMaterias ? ', p.materias' : '') . '
         FROM pagos p
         INNER JOIN deudas d ON d.id = p.deuda_id
         INNER JOIN conceptos_pago c ON c.id = d.concepto_id
@@ -110,7 +142,11 @@ $sql = 'SELECT p.id, p.monto_pagado, p.nro_recibo, p.talonario, p.fecha_pago,
         INNER JOIN estudiantes e ON e.id = m.estudiante_id';
 $params = [];
 if ($busqueda !== '') {
-    $sql .= ' WHERE e.nombres ILIKE :busqueda OR e.apellido_paterno ILIKE :busqueda OR c.descripcion ILIKE :busqueda OR p.nro_recibo ILIKE :busqueda';
+    $busquedaSql = ' WHERE e.nombres ILIKE :busqueda OR e.apellido_paterno ILIKE :busqueda OR c.descripcion ILIKE :busqueda OR p.nro_recibo ILIKE :busqueda';
+    if ($pagosTieneCampoMaterias) {
+        $busquedaSql .= ' OR p.materias ILIKE :busqueda';
+    }
+    $sql .= $busquedaSql;
     $params['busqueda'] = "%$busqueda%";
 }
 $sql .= ' ORDER BY fecha_pago DESC, id DESC';
@@ -140,11 +176,12 @@ $pagos = $stmt->fetchAll();
         <div class="col-md-2"><label class="form-label required" for="fecha_pago">Fecha</label><input class="form-control" id="fecha_pago" name="fecha_pago" type="date" value="<?= date('Y-m-d') ?>" required></div>
         <div class="col-md-3"><label class="form-label" for="nro_recibo">N° recibo</label><input class="form-control" id="nro_recibo" name="nro_recibo" maxlength="50"></div>
         <div class="col-md-3"><label class="form-label" for="talonario">Talonario</label><input class="form-control" id="talonario" name="talonario" maxlength="50"></div>
+        <div class="col-md-4"><label class="form-label" for="materias">Materias</label><select class="form-select" id="materias" name="materias"><option value="">Seleccionar</option><?php foreach ($materiasDisponibles as $materia): ?><option value="<?= htmlspecialchars($materia) ?>"><?= htmlspecialchars($materia) ?></option><?php endforeach; ?></select></div>
         <div class="col-12"><button class="btn btn-warning" type="submit">Guardar pago</button></div>
     </form></div></section><?php endif; ?>
-    <section class="card shadow-sm"><div class="card-body p-4"><form method="GET" class="row g-2 mb-3"><div class="col-sm-9"><label class="visually-hidden" for="buscar">Buscar pago</label><input class="form-control" id="buscar" name="buscar" value="<?= htmlspecialchars($busqueda) ?>" placeholder="Buscar por alumno, concepto o recibo"></div><div class="col-sm-3"><button class="btn btn-outline-primary w-100" type="submit">Buscar</button></div></form><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Alumno</th><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Recibo</th><th>Talonario</th></tr></thead><tbody>
-    <?php foreach ($pagos as $pago): ?><tr><td><?= htmlspecialchars($pago['nombres'].' '.$pago['apellido_paterno'].' '.$pago['apellido_materno']) ?></td><td><?= htmlspecialchars($pago['concepto']) ?></td><td>S/ <?= htmlspecialchars(number_format((float) $pago['monto_pagado'], 2)) ?></td><td><?= htmlspecialchars($pago['fecha_pago']) ?></td><td><?= htmlspecialchars($pago['nro_recibo'] ?: '-') ?></td><td><?= htmlspecialchars($pago['talonario'] ?: '-') ?></td></tr><?php endforeach; ?>
-    <?php if (!$pagos): ?><tr><td colspan="6" class="text-center text-muted py-4">No hay pagos para mostrar.</td></tr><?php endif; ?></tbody></table></div></div></section>
+    <section class="card shadow-sm"><div class="card-body p-4"><form method="GET" class="row g-2 mb-3"><div class="col-sm-9"><label class="visually-hidden" for="buscar">Buscar pago</label><input class="form-control" id="buscar" name="buscar" value="<?= htmlspecialchars($busqueda) ?>" placeholder="Buscar por alumno, concepto, recibo o materias"></div><div class="col-sm-3"><button class="btn btn-outline-primary w-100" type="submit">Buscar</button></div></form><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Alumno</th><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Recibo</th><th>Talonario</th><?php if ($pagosTieneCampoMaterias): ?><th>Materias</th><?php endif; ?></tr></thead><tbody>
+    <?php foreach ($pagos as $pago): ?><tr><td><?= htmlspecialchars($pago['nombres'].' '.$pago['apellido_paterno'].' '.$pago['apellido_materno']) ?></td><td><?= htmlspecialchars($pago['concepto']) ?></td><td>S/ <?= htmlspecialchars(number_format((float) $pago['monto_pagado'], 2)) ?></td><td><?= htmlspecialchars($pago['fecha_pago']) ?></td><td><?= htmlspecialchars($pago['nro_recibo'] ?: '-') ?></td><td><?= htmlspecialchars($pago['talonario'] ?: '-') ?></td><?php if ($pagosTieneCampoMaterias): ?><td><?= htmlspecialchars($pago['materias'] ?: '-') ?></td><?php endif; ?></tr><?php endforeach; ?>
+    <?php if (!$pagos): ?><tr><td colspan="<?= $pagosTieneCampoMaterias ? 7 : 6 ?>" class="text-center text-muted py-4">No hay pagos para mostrar.</td></tr><?php endif; ?></tbody></table></div></div></section>
 </main>
 </body>
 </html>
